@@ -180,8 +180,8 @@ export default function Bookshelf() {
       <header className="bg-white border-b">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-8 py-4">
           <div className="flex items-center gap-3">
-            <img src="/icon48.png" alt="图书" className="text-2xl font-bold text-yellow-500" />
-        <h1 className="ml-4 text-2xl font-bold">我的书架</h1>
+            <img src="/icon48.png" alt="图书" width="32" height="32"/>
+        <h1 className="ml-2 text-xl font-bold">我的书架</h1>
           </div>
         <button 
             className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
@@ -213,7 +213,7 @@ export default function Bookshelf() {
                 {/* 月份标签区 */}
                 <div
                   className="mb-1 text-xs text-gray-400 select-none w-full"
-                  style={{ display: 'grid', gridTemplateColumns: `repeat(${totalCols}, 1fr)`, gap: '2px' }}
+                  style={{ display: 'grid', gridTemplateColumns: `repeat(${totalCols}, 1fr)`, gap: '2px', paddingLeft: '28px' }}
                 >
                   {Array.from({ length: totalCols }).map((_, colIdx) => {
                     let monthLabel = '';
