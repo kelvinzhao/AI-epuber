@@ -46,6 +46,29 @@ export default function Reader() {
   // 聊天记录提升到Reader
   const [chatMessages, setChatMessages] = useState([]);
 
+  // ========== 新增章节进度工具 ==========
+  const chapterProgressUtils = {
+    async save(bookId, chapterId, cfi, scrollTop) {
+      const key = `chapter_progress_${bookId}`;
+      const progress = await get(key) || {};
+      progress[chapterId] = {
+        cfi,
+        scrollTop,
+        timestamp: Date.now()
+      };
+      await set(key, progress);
+    },
+    async load(bookId, chapterId) {
+      const key = `chapter_progress_${bookId}`;
+      const progress = await get(key) || {};
+      return progress[chapterId] || null;
+    },
+    async clear(bookId) {
+      const key = `chapter_progress_${bookId}`;
+      await set(key, null);
+    }
+  };
+
   // 1. 封装注入样式的函数（提前到 hooks 区域最前面）
   const injectThemeStyleToIframe = useCallback((theme) => {
     const iframe = viewerRef.current?.querySelector('iframe');
@@ -499,16 +522,35 @@ export default function Reader() {
     };
   }, [book, spineItems, id]);
 
-  // =======================
-  // 7. 章节切换（上一章/下一章）
-  // =======================
-  const handlePrev = () => {
+  // ========== 章节切换时保存进度 ==========
+  const saveCurrentChapterProgress = useCallback(async () => {
+    if (!book || !currentChapter) return;
+    // 获取当前cfi
+    let cfi = null;
+    try {
+      cfi = book.rendition?.currentLocation()?.start?.cfi || null;
+    } catch (e) {}
+    // 获取滚动位置
+    let scrollTop = 0;
+    try {
+      const iframe = viewerRef.current?.querySelector('iframe');
+      if (iframe && iframe.contentWindow && iframe.contentDocument) {
+        scrollTop = iframe.contentDocument.documentElement.scrollTop || 0;
+      }
+    } catch (e) {}
+    await chapterProgressUtils.save(id, currentChapter, cfi, scrollTop);
+  }, [book, currentChapter, id]);
+
+  // ========== 章节切换时保存进度 ==========
+  const handlePrev = async () => {
+    await saveCurrentChapterProgress();
     const idx = spineItems.findIndex(item => item.href === currentChapter);
     if (idx > 0) {
       book.rendition.display(spineItems[idx - 1].href);
     }
   };
-  const handleNext = () => {
+  const handleNext = async () => {
+    await saveCurrentChapterProgress();
     const idx = spineItems.findIndex(item => item.href === currentChapter);
     if (idx < spineItems.length - 1) {
       book.rendition.display(spineItems[idx + 1].href);
@@ -695,6 +737,31 @@ export default function Reader() {
       document.removeEventListener('click', handleGlobalClick);
     };
   }, [openMenuId]);
+
+  // ========== 章节加载时恢复进度 ==========
+  useEffect(() => {
+    if (!book || !currentChapter) return;
+    (async () => {
+      const chapterProgress = await chapterProgressUtils.load(id, currentChapter);
+      if (chapterProgress) {
+        // 恢复cfi
+        if (chapterProgress.cfi) {
+          try {
+            await book.rendition.display(chapterProgress.cfi);
+          } catch (e) {}
+        }
+        // 恢复滚动位置
+        setTimeout(() => {
+          try {
+            const iframe = viewerRef.current?.querySelector('iframe');
+            if (iframe && iframe.contentWindow && iframe.contentDocument) {
+              iframe.contentDocument.documentElement.scrollTop = chapterProgress.scrollTop || 0;
+            }
+          } catch (e) {}
+        }, 500);
+      }
+    })();
+  }, [book, currentChapter, id]);
 
   // =======================
   // 3. 所有条件 return 必须在所有 Hook 之后

@@ -116,13 +116,16 @@ export default function Bookshelf() {
     // 4. 删除章节摘要
     await set(`summaries_${id}`, null);
 
-    // 5. 删除AI聊天记录
+    // 5. 删除章节进度
+    await set(`chapter_progress_${id}`, null);
+
+    // 6. 删除AI聊天记录
     try {
       const pinnedMsgsData = JSON.parse(localStorage.getItem('pinnedMessagesData') || '[]');
       const newPinnedMsgsData = pinnedMsgsData.filter(m => String(m.bookId) !== String(id));
       localStorage.setItem('pinnedMessagesData', JSON.stringify(newPinnedMsgsData));
 
-      // 6. 更新pinnedMessages列表
+      // 7. 更新pinnedMessages列表
       const pinnedMessages = JSON.parse(localStorage.getItem('pinnedMessages') || '[]');
       const newPinnedMessages = pinnedMessages.filter(ts => {
         const msg = newPinnedMsgsData.find(m => m.timestamp === ts);
