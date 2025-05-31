@@ -27,7 +27,7 @@ AI-epuber 是一个基于 React + Vite 的现代化电子书阅读与管理平�
 
 1. **克隆项目**
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/kelvinzhao/AI-epuber
    cd AI-epuber
    ```
 

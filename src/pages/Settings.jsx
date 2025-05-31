@@ -16,6 +16,16 @@ export default function Settings() {
   const modelDropdownRef = useRef();
   const navigate = useNavigate();
 
+  // 新增：字段级别错误和验证成功状态
+  const [fieldErrors, setFieldErrors] = useState({
+    baseUrl: '',
+    apiKey: '',
+    model: '',
+    summaryPrompt: '',
+    minContentLength: ''
+  });
+  const [validationSuccess, setValidationSuccess] = useState(false);
+
   // 加载设置
   useEffect(() => {
     const loadSettings = async () => {
@@ -41,14 +51,22 @@ export default function Settings() {
 
   // 验证API并获取模型列表
   const validateAndFetchModels = async () => {
-    if (!baseUrl || !apiKey) {
-      setApiError("请填写完整的API配置信息");
-      return;
-    }
-
-    setValidating(true);
+    // 清除所有错误
+    setFieldErrors({});
+    setValidationSuccess(false);
     setApiError("");
-    
+    // 验证必填字段
+    let hasError = false;
+    if (!baseUrl?.trim()) {
+      setFieldErrors(prev => ({...prev, baseUrl: '请输入API Base URL'}));
+      hasError = true;
+    }
+    if (!apiKey?.trim()) {
+      setFieldErrors(prev => ({...prev, apiKey: '请输入API Key'}));
+      hasError = true;
+    }
+    if (hasError) return;
+    setValidating(true);
     try {
       // OpenAI API
       const response = await fetch(`${baseUrl}/v1/models`, {
@@ -57,19 +75,13 @@ export default function Settings() {
           "Content-Type": "application/json"
         }
       });
-
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`OpenAI API错误: ${errorText}`);
       }
-
       const data = await response.json();
-      console.log("API返回的模型列表:", data.data); // 添加调试日志
-
-      // 优化模型过滤逻辑
       const models = data.data
         .filter(model => {
-          //放宽过滤条件，只排除明显不是对话模型的
           return !model.id.includes('embedding') && 
                  !model.id.includes('whisper') &&
                  !model.id.includes('tts') &&
@@ -79,29 +91,20 @@ export default function Settings() {
           id: model.id,
           name: model.id
         }));
-
-      console.log("过滤后的模型列表:", models); // 添加调试日志
-
       if (models.length === 0) {
         throw new Error("未找到可用的模型，请检查API配置是否正确");
       }
-
-      // 保存到本地缓存
       await set("model_list", models);
       setAvailableModels(models);
-
-      // 如果当前选择的模型不在新列表中，选择第一个
       if (models.length > 0 && !models.find(m => m.id === selectedModel)) {
         setSelectedModel(models[0].id);
       }
-
-      setApiError(""); // 清除错误提示
-
+      setValidationSuccess(true);
+      setApiError("");
     } catch (error) {
-      console.error('Error fetching models:', error);
       setApiError(error.message);
-      
-      // 加载缓存的模型列表作为后备
+      setFieldErrors(prev => ({...prev, baseUrl: 'API验证失败，请检查配置是否正确'}));
+      setValidationSuccess(false);
       const cachedModels = await get("model_list") || [];
       setAvailableModels(cachedModels);
     } finally {
@@ -112,47 +115,38 @@ export default function Settings() {
   // 保存设置
   const saveSettings = async () => {
     // 校验所有必填字段
+    let errors = {};
     if (!baseUrl?.trim()) {
-      setApiError("请填写API Base URL");
-      return;
+      errors.baseUrl = "请填写API Base URL";
     }
     if (!apiKey?.trim()) {
-      setApiError("请填写API Key");
-      return;
+      errors.apiKey = "请填写API Key";
     }
     if (!selectedModel) {
-      setApiError("请选择模型");
-      return;
+      errors.model = "请选择模型";
     }
     if (!summaryPrompt?.trim()) {
-      setApiError("请填写摘要提示词");
-      return;
+      errors.summaryPrompt = "请填写摘要提示词";
     }
     if (minContentLength < 50) {
-      setApiError("最小内容长度不能小于50字");
-      return;
+      errors.minContentLength = "最小内容长度不能小于50字";
     }
-
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
     try {
-      // 保存OpenAI配置
       await set("openai_config", {
         baseUrl: baseUrl.trim(),
         apiKey: apiKey.trim(),
         model: selectedModel
       });
-
-      // 保存摘要设置
       await set("summary_prompt", summaryPrompt.trim());
       await set("min_content_length", minContentLength);
-
-      setApiError(""); // 清除错误提示
+      setApiError("");
       alert("设置已保存");
-
       if (location.pathname.includes("/reader/")) {
         navigate(-1);
       }
     } catch (error) {
-      console.error('Save settings error:', error);
       setApiError("保存设置失败：" + error.message);
     }
   };
@@ -188,38 +182,52 @@ export default function Settings() {
               <h2 className="text-xl font-semibold mb-4">OpenAI API设置</h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">API Base URL</label>
+                  <label className="block text-sm font-medium mb-1">API Base URL<span className="text-red-500 ml-1">*</span></label>
                   <div className="space-y-1">
                     <input
                       type="text"
                       value={baseUrl}
-                      onChange={(e) => setBaseUrl(e.target.value)}
-                      className="w-full p-2 border rounded outline-none"
+                      onChange={(e) => { setBaseUrl(e.target.value); setFieldErrors(prev => ({...prev, baseUrl: ''})); }}
+                      className={`w-full p-2 border rounded outline-none ${fieldErrors.baseUrl ? 'border-red-300' : ''}`}
                       placeholder="https://api.openai.com"
                     />
-                    <div className="text-xs text-gray-500">
-                      示例：https://api.openai.com
-                    </div>
+                    {fieldErrors.baseUrl && (
+                      <div className="text-sm text-red-500">{fieldErrors.baseUrl}</div>
+                    )}
+                    <div className="text-xs text-gray-500">示例：https://api.openai.com</div>
                   </div>
                 </div>
                 <div className="space-y-1">
                   <div className="flex gap-2">
                     <div className="flex-1">
-                      <label className="block text-sm font-medium mb-1">API Key</label>
+                      <label className="block text-sm font-medium mb-1">API Key<span className="text-red-500 ml-1">*</span></label>
                       <input
                         type="password"
                         value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        className="w-full p-2 border rounded outline-none"
+                        onChange={(e) => { setApiKey(e.target.value); setFieldErrors(prev => ({...prev, apiKey: ''})); }}
+                        className={`w-full p-2 border rounded outline-none ${fieldErrors.apiKey ? 'border-red-300' : ''}`}
                         placeholder="sk-..."
                       />
+                      {fieldErrors.apiKey && (
+                        <div className="text-sm text-red-500">{fieldErrors.apiKey}</div>
+                      )}
                     </div>
                     <button
                       onClick={validateAndFetchModels}
                       disabled={validating}
-                      className="self-end px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-400"
+                      className="self-end px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-400 flex items-center gap-2"
                     >
-                      {validating ? "验证中..." : "验证"}
+                      {validating ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                          </svg>
+                          验证中...
+                        </>
+                      ) : (
+                        '验证'
+                      )}
                     </button>
                   </div>
                 </div>
@@ -227,18 +235,22 @@ export default function Settings() {
                 <div className="space-y-1">
                   <div className="flex justify-between items-center mb-1">
                     <label className="block text-sm font-medium">
-                      Model
-                      <span className="text-red-500 ml-1">*</span>
+                      Model<span className="text-red-500 ml-1">*</span>
+                      {!selectedModel && (
+                        <span className="ml-2 text-sm text-red-500">请选择模型</span>
+                      )}
                     </label>
                     <button
                       onClick={validateAndFetchModels}
                       disabled={validating || !baseUrl || !apiKey}
-                      className="text-xs text-blue-500 hover:text-blue-600 disabled:text-gray-400"
+                      className="text-xs text-blue-500 hover:text-blue-600 disabled:text-gray-400 flex items-center gap-1"
                     >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
                       {validating ? "更新中..." : "更新模型列表"}
                     </button>
                   </div>
-                  {/* 自定义下拉组件 */}
                   <div className="relative" ref={modelDropdownRef}>
                     <input
                       type="text"
@@ -249,6 +261,9 @@ export default function Settings() {
                       onClick={() => setModelDropdownOpen(v => !v)}
                       disabled={validating}
                     />
+                    {fieldErrors.model && (
+                      <div className="text-sm text-red-500">{fieldErrors.model}</div>
+                    )}
                     {modelDropdownOpen && (
                       <div className="absolute z-10 w-full bg-white border rounded shadow mt-1">
                         <div className="sticky top-0 bg-white z-10">
@@ -271,6 +286,7 @@ export default function Settings() {
                                 className={`px-4 py-2 cursor-pointer hover:bg-blue-100 ${selectedModel === model.id ? 'bg-blue-50 font-bold' : ''}`}
                                 onClick={() => {
                                   setSelectedModel(model.id);
+                                  setFieldErrors(prev => ({...prev, model: ''}));
                                   setModelDropdownOpen(false);
                                 }}
                               >
@@ -284,6 +300,14 @@ export default function Settings() {
                       </div>
                     )}
                   </div>
+                  {validationSuccess && (
+                    <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-green-600 text-sm flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      API配置验证成功
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -292,26 +316,32 @@ export default function Settings() {
               <h2 className="text-xl font-semibold mb-4">AI Summary设置</h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">摘要提示词</label>
+                  <label className="block text-sm font-medium mb-1">摘要提示词<span className="text-red-500 ml-1">*</span></label>
                   <textarea
                     value={summaryPrompt}
-                    onChange={(e) => setSummaryPrompt(e.target.value)}
-                    className="w-full h-32 p-2 border rounded outline-none"
+                    onChange={(e) => { setSummaryPrompt(e.target.value); setFieldErrors(prev => ({...prev, summaryPrompt: ''})); }}
+                    className={`w-full h-32 p-2 border rounded outline-none ${fieldErrors.summaryPrompt ? 'border-red-300' : ''}`}
                     placeholder="请输入生成摘要时使用的提示词..."
                   />
+                  {fieldErrors.summaryPrompt && (
+                    <div className="text-sm text-red-500">{fieldErrors.summaryPrompt}</div>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">最小内容长度</label>
+                  <label className="block text-sm font-medium mb-1">最小内容长度<span className="text-red-500 ml-1">*</span></label>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
                       value={minContentLength}
-                      onChange={(e) => setMinContentLength(parseInt(e.target.value) || 100)}
+                      onChange={(e) => { setMinContentLength(parseInt(e.target.value) || 100); setFieldErrors(prev => ({...prev, minContentLength: ''})); }}
                       min="50"
-                      className="w-24 p-2 border rounded outline-none"
+                      className={`w-24 p-2 border rounded outline-none ${fieldErrors.minContentLength ? 'border-red-300' : ''}`}
                     />
                     <span className="text-sm text-gray-600">字。当章节内容少于这个字数时，将不会生成摘要。</span>
                   </div>
+                  {fieldErrors.minContentLength && (
+                    <div className="text-sm text-red-500">{fieldErrors.minContentLength}</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -335,7 +365,7 @@ export default function Settings() {
                 保存设置
               </button>
             </div>
-            {/* 显示错误信息 */}
+            {/* 显示全局错误信息 */}
             {apiError && (
               <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm">
                 {apiError}

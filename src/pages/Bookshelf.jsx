@@ -101,10 +101,37 @@ export default function Bookshelf() {
   };
 
   // 删除书籍
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
+    // 1. 删除书籍
     const newBooks = books.filter((book) => book.id !== id);
     setBooks(newBooks);
-    set("bookshelf", newBooks);
+    await set("bookshelf", newBooks);
+
+    // 2. 删除阅读进度
+    await set(`progress_${id}`, null);
+
+    // 3. 删除高亮和批注
+    await set(`highlights_${id}`, null);
+
+    // 4. 删除章节摘要
+    await set(`summaries_${id}`, null);
+
+    // 5. 删除AI聊天记录
+    try {
+      const pinnedMsgsData = JSON.parse(localStorage.getItem('pinnedMessagesData') || '[]');
+      const newPinnedMsgsData = pinnedMsgsData.filter(m => String(m.bookId) !== String(id));
+      localStorage.setItem('pinnedMessagesData', JSON.stringify(newPinnedMsgsData));
+
+      // 6. 更新pinnedMessages列表
+      const pinnedMessages = JSON.parse(localStorage.getItem('pinnedMessages') || '[]');
+      const newPinnedMessages = pinnedMessages.filter(ts => {
+        const msg = newPinnedMsgsData.find(m => m.timestamp === ts);
+        return msg && String(msg.bookId) !== String(id);
+      });
+      localStorage.setItem('pinnedMessages', JSON.stringify(newPinnedMessages));
+    } catch (e) {
+      // 忽略本地存储异常
+    }
   };
 
   // 处理搜索
