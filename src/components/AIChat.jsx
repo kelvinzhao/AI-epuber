@@ -27,6 +27,7 @@ export default function AIChat({
   const [aiConfigured, setAiConfigured] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [abortController, setAbortController] = useState(null);
   const chatEndRef = useRef(null);
   const [pinnedMessages, setPinnedMessages] = useState([]);
 
@@ -100,11 +101,14 @@ export default function AIChat({
     setChatMessages(msgs => [...msgs, userMsg]);
     setChatInput("");
     setChatLoading(true);
+    const controller = new AbortController();
+    setAbortController(controller);
     try {
       const config = await get("openai_config");
       if (!config?.baseUrl || !config?.apiKey) {
         setChatMessages(msgs => [...msgs, { role: 'assistant', content: "AI未配置", timestamp: getLocalTimestamp() }]);
         setChatLoading(false);
+        setAbortController(null);
         return;
       }
       const response = await fetch(
@@ -121,16 +125,29 @@ export default function AIChat({
               { role: "system", content: `你是一个友好的AI阅读助手，《${title}》，作者是${author}，请回答与这本书内容相关的问题。` },
               { role: "user", content: userMsg.content }
             ]
-          })
+          }),
+          signal: controller.signal
         }
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.error?.message || "AI请求失败");
       setChatMessages(msgs => [...msgs, { role: 'assistant', content: data.choices[0].message.content, timestamp: getLocalTimestamp() }]);
     } catch (e) {
-      setChatMessages(msgs => [...msgs, { role: 'assistant', content: "AI请求失败：" + e.message, timestamp: getLocalTimestamp() }]);
+      if (e.name === 'AbortError') {
+        setChatMessages(msgs => [...msgs, { role: 'assistant', content: "请求已取消", timestamp: getLocalTimestamp() }]);
+      } else {
+        setChatMessages(msgs => [...msgs, { role: 'assistant', content: "AI请求失败：" + e.message, timestamp: getLocalTimestamp() }]);
+      }
     } finally {
       setChatLoading(false);
+      setAbortController(null);
+    }
+  };
+
+  const stopGeneration = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
     }
   };
 
@@ -248,10 +265,17 @@ export default function AIChat({
           />
           <button
             className="px-3 py-1 rounded text-sm"
-            style={{ background: theme === 'dark' ? '#2563eb' : '#2563eb', color: '#fff' }}
-            onClick={sendChatMessage}
-            disabled={chatLoading || !chatInput.trim()}
-          >发送</button>
+            style={{ 
+              background: chatLoading 
+                ? (theme === 'dark' ? '#dc2626' : '#dc2626') 
+                : (theme === 'dark' ? '#2563eb' : '#2563eb'), 
+              color: '#fff' 
+            }}
+            onClick={chatLoading ? stopGeneration : sendChatMessage}
+            disabled={!chatLoading && !chatInput.trim()}
+          >
+            {chatLoading ? '停止' : '发送'}
+          </button>
         </div>
       </div>
     </div>

@@ -491,10 +491,21 @@ export default function Reader() {
     if (!book) return;
     const onRelocated = (location) => {
       setCurrentChapter(location.start.href);
+      // 获取当前滚动位置
+      let scrollTop = 0;
+      try {
+        const iframe = viewerRef.current?.querySelector('iframe');
+        if (iframe && iframe.contentWindow && iframe.contentDocument) {
+          scrollTop = iframe.contentDocument.documentElement.scrollTop || 0;
+        }
+      } catch (e) {}
+      // 保存到原有进度系统
       set(`progress_${id}`, {
         chapter: location.start.href,
         cfi: location.start.cfi
       });
+      // 同时保存到新的章节进度系统
+      chapterProgressUtils.save(id, location.start.href, location.start.cfi, scrollTop);
       // 计算进度并更新书架
       const idx = spineItems.findIndex(item => item.href === location.start.href);
       let percent = 0;
